@@ -425,6 +425,8 @@ class CBlock(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
+        bf, n, c = x.shape
+        x = rearrange(x, 'bf n c  -> bf c n', )
         # dwConv
         x = x + self.pos_embed(x)
         # x = x + self.drop_path(self.conv2(self.attn(self.conv1(self.norm1(x)))))
@@ -439,6 +441,8 @@ class CBlock(nn.Module):
         # x = x + self.drop_path(self.mlp(self.norm2(x)))
         x = self.norm2(x)
         x = x + self.drop_path(x)
+
+        x = rearrange(x, 'bf c n -> bf n c', )
         return x
 
 

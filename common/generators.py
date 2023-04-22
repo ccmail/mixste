@@ -4,10 +4,12 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
-import time
+import datetime
 from itertools import zip_longest
 import numpy as np
 from tqdm import tqdm
+
+from common.utils import cost_time
 
 
 class ChunkedGenerator_Seq:
@@ -103,10 +105,12 @@ class ChunkedGenerator_Seq:
         enabled = True
         # print("要开始一次epoch")
         while enabled:
+            # start_time
+            print("开始新的epoch")
+            start_time = datetime.datetime.now()
             start_idx, pairs = self.next_pairs()
             for b_i in tqdm(range(start_idx, self.num_batches)):
                 chunks = pairs[b_i * self.batch_size: (b_i + 1) * self.batch_size]
-                start_time = time.time()
 
                 for i, (seq_i, start_3d, end_3d, flip) in enumerate(chunks):
                     # start_2d = start_3d - self.pad - self.causal_shift
@@ -167,7 +171,7 @@ class ChunkedGenerator_Seq:
                 else:
                     yield self.batch_cam[:len(chunks)], self.batch_3d[:len(chunks)], self.batch_2d[:len(chunks)]
                 # print("[{curr_item}/{total_item}, 用时{cost_time}]".format(curr_item=b_i, total_item=self.num_batches - start_idx, cost_time=time.time() - start_time))
-
+            print("该epoch的训练结束, 用时{cost}".format(cost=cost_time(start_time, datetime.datetime.now())))
             if self.endless:
                 self.state = None
             else:
@@ -223,7 +227,9 @@ class UnchunkedGenerator_Seq:
         self.augment = augment
 
     def next_epoch(self):
-        for seq_cam, seq_3d, seq_2d in zip_longest(self.cameras, self.poses_3d, self.poses_2d):
+        print(">>>>>>>>现在是在seq测试环节<<<<<<<<")
+        start_time = datetime.datetime.now()
+        for seq_cam, seq_3d, seq_2d in tqdm(zip_longest(self.cameras, self.poses_3d, self.poses_2d)):
             batch_cam = None if seq_cam is None else np.expand_dims(seq_cam, axis=0)
             batch_3d = None if seq_3d is None else np.expand_dims(seq_3d, axis=0)
             batch_2d = None if seq_2d is None else np.expand_dims(seq_2d, axis=0)
@@ -247,6 +253,7 @@ class UnchunkedGenerator_Seq:
                 batch_2d[1, :, self.kps_left + self.kps_right] = batch_2d[1, :, self.kps_right + self.kps_left]
             # print(batch_2d.shape)
             yield batch_cam, batch_3d, batch_2d
+        print(">>>>>>>>seq测试环节结束, 耗时{cost}<<<<<<<<".format(cost=cost_time(start_time, datetime.datetime.now())))
 
 
 class UnchunkedGenerator_Seq2Seq:
@@ -298,14 +305,12 @@ class UnchunkedGenerator_Seq2Seq:
         self.augment = augment
 
     def next_epoch(self):
-        for seq_cam, seq_3d, seq_2d in zip_longest(self.cameras, self.poses_3d, self.poses_2d):
+        print(">>>>>>>>现在是在seq2seq测试环节<<<<<<<<")
+        start_time = datetime.datetime.now()
+        for seq_cam, seq_3d, seq_2d in tqdm(zip_longest(self.cameras, self.poses_3d, self.poses_2d)):
             batch_cam = None if seq_cam is None else np.expand_dims(seq_cam, axis=0)
-            batch_3d = None if seq_3d is None else np.expand_dims(np.pad(seq_3d,
-                                                                         ((self.pad + self.causal_shift, self.pad - self.causal_shift), (0, 0), (0, 0)),
-                                                                         'edge'), axis=0)
-            batch_2d = np.expand_dims(np.pad(seq_2d,
-                                             ((self.pad + self.causal_shift, self.pad - self.causal_shift), (0, 0), (0, 0)),
-                                             'edge'), axis=0)
+            batch_3d = None if seq_3d is None else np.expand_dims(np.pad(seq_3d, ((self.pad + self.causal_shift, self.pad - self.causal_shift), (0, 0), (0, 0)), 'edge'), axis=0)
+            batch_2d = np.expand_dims(np.pad(seq_2d, ((self.pad + self.causal_shift, self.pad - self.causal_shift), (0, 0), (0, 0)), 'edge'), axis=0)
             if self.augment:
                 # Append flipped version
                 if batch_cam is not None:
@@ -323,3 +328,4 @@ class UnchunkedGenerator_Seq2Seq:
                 batch_2d[1, :, self.kps_left + self.kps_right] = batch_2d[1, :, self.kps_right + self.kps_left]
 
             yield batch_cam, batch_3d, batch_2d
+        print(">>>>>>>>seq2seq测试环节结束, 耗时{cost}<<<<<<<<".format(cost=cost_time(start_time, datetime.datetime.now())))

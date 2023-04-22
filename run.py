@@ -11,7 +11,6 @@ import numpy as np
 
 from common.arguments import parse_args
 import torch
-
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -33,9 +32,9 @@ from time import time
 from common.utils import *
 from common.logging import Logger
 from torch.utils.tensorboard import SummaryWriter
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-#cudnn.benchmark = True       
+# cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -49,31 +48,31 @@ args = parse_args()
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-
 if args.evaluate != '':
     description = "Evaluate!"
 elif args.evaluate == '':
-    
+
     description = "Train!"
 
 # initial setting
-TIMESTAMP = "{0:%Y%m%dT%H-%M-%S/}".format(datetime.now())
+TIMESTAMP = "{0:%Y%m%dT%H-%M-%S/}".format(datetime.now(timezone(timedelta(hours=8))))
 # tensorboard
 if not args.nolog:
-    writer = SummaryWriter(args.log+'_'+TIMESTAMP)
+    writer = SummaryWriter(args.log + '_' + TIMESTAMP)
     writer.add_text('description', description)
     writer.add_text('command', 'python ' + ' '.join(sys.argv))
     # logging setting
-    logfile = os.path.join(args.log+'_'+TIMESTAMP, 'logging.log')
+    logfile = os.path.join(args.log + '_' + TIMESTAMP, 'logging.log')
     sys.stdout = Logger(logfile)
 print(description)
 print('python ' + ' '.join(sys.argv))
 print("CUDA Device Count: ", torch.cuda.device_count())
-print(args)
+args_message = '\n'.join([f'>>>> {key:<30}:{val}' for key, val in vars(args).items()])
+print(args_message)
 
 # if not assign checkpoint path, Save checkpoint file into log folder
-if args.checkpoint=='':
-    args.checkpoint = args.log+'_'+TIMESTAMP
+if args.checkpoint == '':
+    args.checkpoint = args.log + '_' + TIMESTAMP
 try:
     # Create checkpoint directory if it does not exist
     os.makedirs(args.checkpoint)
@@ -86,12 +85,15 @@ print('Loading dataset...')
 dataset_path = 'data/data_3d_' + args.dataset + '.npz'
 if args.dataset == 'h36m':
     from common.h36m_dataset import Human36mDataset
+
     dataset = Human36mDataset(dataset_path)
 elif args.dataset.startswith('humaneva'):
     from common.humaneva_dataset import HumanEvaDataset
+
     dataset = HumanEvaDataset(dataset_path)
 elif args.dataset.startswith('custom'):
     from common.custom_dataset import CustomDataset
+
     dataset = CustomDataset('data/data_2d_' + args.dataset + '_' + args.keypoints + '.npz')
 else:
     raise KeyError('Invalid dataset')
@@ -105,7 +107,7 @@ for subject in dataset.subjects():
             positions_3d = []
             for cam in anim['cameras']:
                 pos_3d = world_to_camera(anim['positions'], R=cam['orientation'], t=cam['translation'])
-                pos_3d[:, 1:] -= pos_3d[:, :1] # Remove global offset, but keep trajectory in first position
+                pos_3d[:, 1:] -= pos_3d[:, :1]  # Remove global offset, but keep trajectory in first position
                 positions_3d.append(pos_3d)
             anim['positions_3d'] = positions_3d
 
@@ -169,7 +171,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
                     continue
 
             poses_2d = keypoints[subject][action]
-            for i in range(len(poses_2d)): # Iterate across cameras
+            for i in range(len(poses_2d)):  # Iterate across cameras
                 out_poses_2d.append(poses_2d[i])
 
             if subject in dataset.cameras():
@@ -182,7 +184,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             if parse_3d_poses and 'positions_3d' in dataset[subject][action]:
                 poses_3d = dataset[subject][action]['positions_3d']
                 assert len(poses_3d) == len(poses_2d), 'Camera count mismatch'
-                for i in range(len(poses_3d)): # Iterate across cameras
+                for i in range(len(poses_3d)):  # Iterate across cameras
                     out_poses_3d.append(poses_3d[i])
 
     if len(out_camera_params) == 0:
@@ -193,11 +195,11 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
     stride = args.downsample
     if subset < 1:
         for i in range(len(out_poses_2d)):
-            n_frames = int(round(len(out_poses_2d[i])//stride * subset)*stride)
+            n_frames = int(round(len(out_poses_2d[i]) // stride * subset) * stride)
             start = deterministic_random(0, len(out_poses_2d[i]) - n_frames + 1, str(len(out_poses_2d[i])))
-            out_poses_2d[i] = out_poses_2d[i][start:start+n_frames:stride]
+            out_poses_2d[i] = out_poses_2d[i][start:start + n_frames:stride]
             if out_poses_3d is not None:
-                out_poses_3d[i] = out_poses_3d[i][start:start+n_frames:stride]
+                out_poses_3d[i] = out_poses_3d[i][start:start + n_frames:stride]
     elif stride > 1:
         # Downsample as requested
         for i in range(len(out_poses_2d)):
@@ -205,8 +207,8 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             if out_poses_3d is not None:
                 out_poses_3d[i] = out_poses_3d[i][::stride]
 
-
     return out_camera_params, out_poses_3d, out_poses_2d
+
 
 action_filter = None if args.actions == '*' else args.actions.split(',')
 if action_filter is not None:
@@ -218,8 +220,8 @@ cameras_valid, poses_valid, poses_valid_2d = fetch(subjects_test, action_filter)
 receptive_field = args.number_of_frames
 print('INFO: Receptive field: {} frames'.format(receptive_field))
 if not args.nolog:
-    writer.add_text(args.log+'_'+TIMESTAMP + '/Receptive field', str(receptive_field))
-pad = (receptive_field -1) // 2 # Padding on each side
+    writer.add_text(args.log + '_' + TIMESTAMP + '/Receptive field', str(receptive_field))
+pad = (receptive_field - 1) // 2  # Padding on each side
 min_loss = args.min_loss
 width = cam['res_w']
 height = cam['res_h']
@@ -227,11 +229,11 @@ num_joints = keypoints_metadata['num_joints']
 
 #########################################PoseTransformer
 
-model_pos_train =  MixSTE2(num_frame=receptive_field, num_joints=num_joints, in_chans=2, embed_dim_ratio=args.cs, depth=args.dep,
-        num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None,drop_path_rate=0.1)
+model_pos_train = MixSTE2(num_frame=receptive_field, num_joints=num_joints, in_chans=2, embed_dim_ratio=args.cs, depth=args.dep,
+                          num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None, drop_path_rate=0.1)
 
-model_pos =  MixSTE2(num_frame=receptive_field, num_joints=num_joints, in_chans=2, embed_dim_ratio=args.cs, depth=args.dep,
-        num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None,drop_path_rate=0)
+model_pos = MixSTE2(num_frame=receptive_field, num_joints=num_joints, in_chans=2, embed_dim_ratio=args.cs, depth=args.dep,
+                    num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None, drop_path_rate=0)
 
 ################ load weight ########################
 # posetrans_checkpoint = torch.load('./checkpoint/pretrained_posetrans.bin', map_location=lambda storage, loc: storage)
@@ -243,9 +245,9 @@ causal_shift = 0
 model_params = 0
 for parameter in model_pos.parameters():
     model_params += parameter.numel()
-print('INFO: Trainable parameter count:', model_params/1000000, 'Million')
+print('INFO: Trainable parameter count:', model_params / 1000000, 'Million')
 if not args.nolog:
-    writer.add_text(args.log+'_'+TIMESTAMP + '/Trainable parameter count', str(model_params/1000000) + ' Million')
+    writer.add_text(args.log + '_' + TIMESTAMP + '/Trainable parameter count', str(model_params / 1000000) + ' Million')
 
 # make model parallel
 if torch.cuda.is_available():
@@ -263,13 +265,13 @@ if args.resume or args.evaluate:
     model_pos_train.load_state_dict(checkpoint['model_pos'], strict=False)
     model_pos.load_state_dict(checkpoint['model_pos'], strict=False)
 
-
 test_generator = UnchunkedGenerator_Seq(cameras_valid, poses_valid, poses_valid_2d,
-                                    pad=pad, causal_shift=causal_shift, augment=False,
-                                    kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
+                                        pad=pad, causal_shift=causal_shift, augment=False,
+                                        kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
 print('INFO: Testing on {} frames'.format(test_generator.num_frames()))
 if not args.nolog:
-    writer.add_text(args.log+'_'+TIMESTAMP + '/Testing Frames', str(test_generator.num_frames()))
+    writer.add_text(args.log + '_' + TIMESTAMP + '/Testing Frames', str(test_generator.num_frames()))
+
 
 def eval_data_prepare(receptive_field, inputs_2d, inputs_3d):
     # inputs_2d_p = torch.squeeze(inputs_2d)
@@ -280,35 +282,35 @@ def eval_data_prepare(receptive_field, inputs_2d, inputs_3d):
     #     eval_input_2d[i,:,:,:] = inputs_2d_p[i:i+receptive_field, :, :]
     # return eval_input_2d, inputs_3d_p
     ### split into (f/f1, f1, n, 2)
-    assert inputs_2d.shape[:-1] == inputs_3d.shape[:-1], "2d and 3d inputs shape must be same! "+str(inputs_2d.shape)+str(inputs_3d.shape)
+    assert inputs_2d.shape[:-1] == inputs_3d.shape[:-1], "2d and 3d inputs shape must be same! " + str(inputs_2d.shape) + str(inputs_3d.shape)
     inputs_2d_p = torch.squeeze(inputs_2d)
     inputs_3d_p = torch.squeeze(inputs_3d)
 
-    if inputs_2d_p.shape[0] / receptive_field > inputs_2d_p.shape[0] // receptive_field: 
-        out_num = inputs_2d_p.shape[0] // receptive_field+1
+    if inputs_2d_p.shape[0] / receptive_field > inputs_2d_p.shape[0] // receptive_field:
+        out_num = inputs_2d_p.shape[0] // receptive_field + 1
     elif inputs_2d_p.shape[0] / receptive_field == inputs_2d_p.shape[0] // receptive_field:
         out_num = inputs_2d_p.shape[0] // receptive_field
 
     eval_input_2d = torch.empty(out_num, receptive_field, inputs_2d_p.shape[1], inputs_2d_p.shape[2])
     eval_input_3d = torch.empty(out_num, receptive_field, inputs_3d_p.shape[1], inputs_3d_p.shape[2])
 
-    for i in range(out_num-1):
-        eval_input_2d[i,:,:,:] = inputs_2d_p[i*receptive_field:i*receptive_field+receptive_field,:,:]
-        eval_input_3d[i,:,:,:] = inputs_3d_p[i*receptive_field:i*receptive_field+receptive_field,:,:]
+    for i in range(out_num - 1):
+        eval_input_2d[i, :, :, :] = inputs_2d_p[i * receptive_field:i * receptive_field + receptive_field, :, :]
+        eval_input_3d[i, :, :, :] = inputs_3d_p[i * receptive_field:i * receptive_field + receptive_field, :, :]
     if inputs_2d_p.shape[0] < receptive_field:
         from torch.nn import functional as F
-        pad_right = receptive_field-inputs_2d_p.shape[0]
+        pad_right = receptive_field - inputs_2d_p.shape[0]
         inputs_2d_p = rearrange(inputs_2d_p, 'b f c -> f c b')
-        inputs_2d_p = F.pad(inputs_2d_p, (0,pad_right), mode='replicate')
+        inputs_2d_p = F.pad(inputs_2d_p, (0, pad_right), mode='replicate')
         # inputs_2d_p = np.pad(inputs_2d_p, ((0, receptive_field-inputs_2d_p.shape[0]), (0, 0), (0, 0)), 'edge')
         inputs_2d_p = rearrange(inputs_2d_p, 'f c b -> b f c')
     if inputs_3d_p.shape[0] < receptive_field:
-        pad_right = receptive_field-inputs_3d_p.shape[0]
+        pad_right = receptive_field - inputs_3d_p.shape[0]
         inputs_3d_p = rearrange(inputs_3d_p, 'b f c -> f c b')
-        inputs_3d_p = F.pad(inputs_3d_p, (0,pad_right), mode='replicate')
+        inputs_3d_p = F.pad(inputs_3d_p, (0, pad_right), mode='replicate')
         inputs_3d_p = rearrange(inputs_3d_p, 'f c b -> b f c')
-    eval_input_2d[-1,:,:,:] = inputs_2d_p[-receptive_field:,:,:]
-    eval_input_3d[-1,:,:,:] = inputs_3d_p[-receptive_field:,:,:]
+    eval_input_2d[-1, :, :, :] = inputs_2d_p[-receptive_field:, :, :]
+    eval_input_3d[-1, :, :, :] = inputs_3d_p[-receptive_field:, :, :]
 
     return eval_input_2d, eval_input_3d
 
@@ -332,18 +334,18 @@ if not args.evaluate:
     final_momentum = 0.001
 
     # get training data
-    
+
     # train_generator = ChunkedGenerator_Seq(args.batch_size//args.stride, cameras_train, poses_train, poses_train_2d, args.stride,
     #                                    pad=pad, causal_shift=causal_shift, shuffle=True, augment=args.data_augmentation,
     #                                    kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
-    train_generator = ChunkedGenerator_Seq(args.batch_size//args.stride, cameras_train, poses_train, poses_train_2d, args.number_of_frames,
-                                       pad=pad, causal_shift=causal_shift, shuffle=True, augment=args.data_augmentation,
-                                       kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
+    train_generator = ChunkedGenerator_Seq(args.batch_size // args.stride, cameras_train, poses_train, poses_train_2d, args.number_of_frames,
+                                           pad=pad, causal_shift=causal_shift, shuffle=True, augment=args.data_augmentation,
+                                           kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
     train_generator_eval = UnchunkedGenerator_Seq(cameras_train, poses_train, poses_train_2d,
-                                              pad=pad, causal_shift=causal_shift, augment=False)
+                                                  pad=pad, causal_shift=causal_shift, augment=False)
     print('INFO: Training on {} frames'.format(train_generator_eval.num_frames()))
     if not args.nolog:
-        writer.add_text(args.log+'_'+TIMESTAMP + '/Training Frames', str(train_generator_eval.num_frames()))
+        writer.add_text(args.log + '_' + TIMESTAMP + '/Training Frames', str(train_generator_eval.num_frames()))
 
     if args.resume:
         epoch = checkpoint['epoch']
@@ -360,7 +362,7 @@ if not args.evaluate:
 
     # Pos model only
     while epoch < args.epochs:
-        start_time = time()
+        start_time = time.time()
         epoch_loss_3d_train = 0
         epoch_loss_traj_train = 0
         epoch_loss_2d_train_unlabeled = 0
@@ -369,7 +371,7 @@ if not args.evaluate:
         model_pos_train.train()
 
         # Just train 1 time, for quick debug
-        notrain=False
+        notrain = False
         for cameras_train, batch_3d, batch_2d in train_generator.next_epoch():
             # if notrain:break
             # notrain=True
@@ -394,13 +396,13 @@ if not args.evaluate:
             # del inputs_2d
             # torch.cuda.empty_cache()
             ### weight mpjpe
-            if args.dataset=='h36m':
+            if args.dataset == 'h36m':
                 # # hrdet
                 # w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
 
                 w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
-            
-            elif args.dataset=='humaneva15':
+
+            elif args.dataset == 'humaneva15':
                 w_mpjpe = torch.tensor([1, 1, 2.5, 2.5, 1, 2.5, 2.5, 1, 1.5, 1.5, 4, 4, 1.5, 4, 4]).cuda()
             loss_3d_pos = weighted_mpjpe(predicted_3d_pos, inputs_3d, w_mpjpe)
             # loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
@@ -408,11 +410,11 @@ if not args.evaluate:
             # loss_3d_pos = cl_wmpjpe(predicted_3d_pos, inputs_3d, w_mpjpe, epoch, iter_num=args.epochs, switch_iter=10)
 
             # Temporal Consistency Loss
-            dif_seq = predicted_3d_pos[:,1:,:,:] - predicted_3d_pos[:,:-1,:,:]
+            dif_seq = predicted_3d_pos[:, 1:, :, :] - predicted_3d_pos[:, :-1, :, :]
             weights_joints = torch.ones_like(dif_seq).cuda()
             weights_mul = w_mpjpe
             assert weights_mul.shape[0] == weights_joints.shape[-2]
-            weights_joints = torch.mul(weights_joints.permute(0,1,3,2),weights_mul).permute(0,1,3,2)
+            weights_joints = torch.mul(weights_joints.permute(0, 1, 3, 2), weights_mul).permute(0, 1, 3, 2)
             # weights_diff = 0.5
             # index = [1,1,1,1,2,2,2,2,1]
             # dif_seq = torch.mean(torch.multiply(weights_joints, torch.square(dif_seq)), dim=-1)
@@ -421,7 +423,7 @@ if not args.evaluate:
 
             # weights_diff = 2.0
             loss_diff = 0.5 * dif_seq + 2.0 * mean_velocity_error_train(predicted_3d_pos, inputs_3d, axis=1)
-            
+
             # norm_loss = Norm_Loss(receptive_field, 12, num_joints)
             # norm_loss_2 = Norm_Loss(receptive_field, 24, num_joints)
             # norm_loss_3 = Norm_Loss(receptive_field, 8, num_joints)
@@ -437,7 +439,7 @@ if not args.evaluate:
 
             # loss_total = (loss_3d_pos[:,1:] + loss_diff)
             loss_total = loss_3d_pos + loss_diff
-            
+
             loss_total.backward(loss_total.clone().detach())
 
             loss_total = torch.mean(loss_total)
@@ -491,7 +493,7 @@ if not args.evaluate:
                                                                               joints_right + joints_left]
                     for i in range(predicted_3d_pos.shape[0]):
                         # print(predicted_3d_pos[i,0,0,0], predicted_3d_pos_flip[i,0,0,0])
-                        predicted_3d_pos[i,:,:,:] = (predicted_3d_pos[i,:,:,:] + predicted_3d_pos_flip[i,:,:,:])/2
+                        predicted_3d_pos[i, :, :, :] = (predicted_3d_pos[i, :, :, :] + predicted_3d_pos_flip[i, :, :, :]) / 2
                         # print(predicted_3d_pos[i,0,0,0], predicted_3d_pos_flip[i,0,0,0])
                     # predicted_3d_pos = torch.mean(torch.cat((predicted_3d_pos, predicted_3d_pos_flip), dim=1), dim=1, keepdim=True)
 
@@ -507,12 +509,11 @@ if not args.evaluate:
                     loss_3d_vel = mean_velocity_error_train(predicted_3d_pos, inputs_3d, axis=1)
                     epoch_loss_3d_vel += inputs_3d.shape[0] * inputs_3d.shape[1] * loss_3d_vel.item()
 
-
                     # del inputs_3d, loss_3d_pos, predicted_3d_pos
                     # torch.cuda.empty_cache()
 
                 losses_3d_valid.append(epoch_loss_3d_valid / N)
-                epoch_loss_3d_vel = epoch_loss_3d_vel/N
+                epoch_loss_3d_vel = epoch_loss_3d_vel / N
 
                 # Evaluate on training set, this time in evaluation mode
                 epoch_loss_3d_train_eval = 0
@@ -539,7 +540,7 @@ if not args.evaluate:
 
                     # del inputs_2d
                     # torch.cuda.empty_cache()
-                    
+
                     # set root as zero
                     # predicted_3d_pos[:, :, 0] = 0
                     loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
@@ -555,7 +556,7 @@ if not args.evaluate:
                 epoch_loss_2d_train_unlabeled_eval = 0
                 N_semi = 0
 
-        elapsed = (time() - start_time) / 60
+        elapsed = (time.time() - start_time) / 60
 
         if args.no_eval:
             print('[%d] time %.2f lr %f 3d_train %f' % (
@@ -573,12 +574,12 @@ if not args.evaluate:
                 losses_3d_valid[-1] * 1000,
                 epoch_loss_3d_vel * 1000))
             if not args.nolog:
-                writer.add_scalar("Loss/3d training eval loss", losses_3d_train_eval[-1] * 1000, epoch+1)
-                writer.add_scalar("Loss/3d validation loss", losses_3d_valid[-1] * 1000, epoch+1)
+                writer.add_scalar("Loss/3d training eval loss", losses_3d_train_eval[-1] * 1000, epoch + 1)
+                writer.add_scalar("Loss/3d validation loss", losses_3d_valid[-1] * 1000, epoch + 1)
         if not args.nolog:
-            writer.add_scalar("Loss/3d training loss", losses_3d_train[-1] * 1000, epoch+1)
-            writer.add_scalar("Parameters/learing rate", lr, epoch+1)
-            writer.add_scalar('Parameters/training time per epoch', elapsed, epoch+1)
+            writer.add_scalar("Loss/3d training loss", losses_3d_train[-1] * 1000, epoch + 1)
+            writer.add_scalar("Parameters/learing rate", lr, epoch + 1)
+            writer.add_scalar('Parameters/training time per epoch', elapsed, epoch + 1)
         # Decay learning rate exponentially
         lr *= lr_decay
         for param_group in optimizer.param_groups:
@@ -625,6 +626,7 @@ if not args.evaluate:
         if args.export_training_curves and epoch > 3:
             if 'matplotlib' not in sys.modules:
                 import matplotlib
+
                 matplotlib.use('Agg')
                 import matplotlib.pyplot as plt
 
@@ -640,6 +642,8 @@ if not args.evaluate:
             plt.savefig(os.path.join(args.checkpoint, 'loss_3d.png'))
 
             plt.close('all')
+
+
 # Training end
 
 # Evaluate
@@ -673,34 +677,33 @@ def evaluate(test_generator, action=None, return_predictions=False, use_trajecto
                 model_eval.load_state_dict(checkpoint['model_pos'], strict=False)
                 model_eval.eval()
         # else:
-            # model_traj.eval()
+        # model_traj.eval()
         N = 0
         for _, batch, batch_2d in test_generator.next_epoch():
             inputs_2d = torch.from_numpy(batch_2d.astype('float32'))
             inputs_3d = torch.from_numpy(batch.astype('float32'))
 
-
             ##### apply test-time-augmentation (following Videopose3d)
             inputs_2d_flip = inputs_2d.clone()
-            inputs_2d_flip [:, :, :, 0] *= -1
-            inputs_2d_flip[:, :, kps_left + kps_right,:] = inputs_2d_flip[:, :, kps_right + kps_left,:]
+            inputs_2d_flip[:, :, :, 0] *= -1
+            inputs_2d_flip[:, :, kps_left + kps_right, :] = inputs_2d_flip[:, :, kps_right + kps_left, :]
 
             ##### convert size
             inputs_3d_p = inputs_3d
             if newmodel is not None:
                 def eval_data_prepare_pf(receptive_field, inputs_2d, inputs_3d):
                     inputs_2d_p = torch.squeeze(inputs_2d)
-                    inputs_3d_p = inputs_3d.permute(1,0,2,3)
-                    padding = int(receptive_field//2)
+                    inputs_3d_p = inputs_3d.permute(1, 0, 2, 3)
+                    padding = int(receptive_field // 2)
                     inputs_2d_p = rearrange(inputs_2d_p, 'b f c -> f c b')
-                    inputs_2d_p = F.pad(inputs_2d_p, (padding,padding), mode='replicate')
+                    inputs_2d_p = F.pad(inputs_2d_p, (padding, padding), mode='replicate')
                     inputs_2d_p = rearrange(inputs_2d_p, 'f c b -> b f c')
                     out_num = inputs_2d_p.shape[0] - receptive_field + 1
                     eval_input_2d = torch.empty(out_num, receptive_field, inputs_2d_p.shape[1], inputs_2d_p.shape[2])
                     for i in range(out_num):
-                        eval_input_2d[i,:,:,:] = inputs_2d_p[i:i+receptive_field, :, :]
+                        eval_input_2d[i, :, :, :] = inputs_2d_p[i:i + receptive_field, :, :]
                     return eval_input_2d, inputs_3d_p
-                
+
                 inputs_2d, inputs_3d = eval_data_prepare_pf(81, inputs_2d, inputs_3d_p)
                 inputs_2d_flip, _ = eval_data_prepare_pf(81, inputs_2d_flip, inputs_3d_p)
             else:
@@ -717,16 +720,16 @@ def evaluate(test_generator, action=None, return_predictions=False, use_trajecto
                 inputs_2d = inputs_2d.cuda()
                 inputs_2d_flip = inputs_2d_flip.cuda()
                 inputs_3d = inputs_3d.cuda()
-                
+
             inputs_3d[:, :, 0] = 0
-            
+
             predicted_3d_pos = model_eval(inputs_2d)
             predicted_3d_pos_flip = model_eval(inputs_2d_flip)
             predicted_3d_pos_flip[:, :, :, 0] *= -1
             predicted_3d_pos_flip[:, :, joints_left + joints_right] = predicted_3d_pos_flip[:, :,
                                                                       joints_right + joints_left]
             for i in range(predicted_3d_pos.shape[0]):
-                predicted_3d_pos[i,:,:,:] = (predicted_3d_pos[i,:,:,:] + predicted_3d_pos_flip[i,:,:,:])/2
+                predicted_3d_pos[i, :, :, :] = (predicted_3d_pos[i, :, :, :] + predicted_3d_pos_flip[i, :, :, :]) / 2
             # predicted_3d_pos = torch.mean(torch.cat((predicted_3d_pos, predicted_3d_pos_flip), dim=1), dim=1, keepdim=True)
 
             # del inputs_2d, inputs_2d_flip
@@ -740,27 +743,27 @@ def evaluate(test_generator, action=None, return_predictions=False, use_trajecto
             # error, joints_err = mpjpe(predicted_3d_pos, inputs_3d, return_joints_err=True)
             # joints_errs.append(joints_err)
 
-            epoch_loss_3d_pos_scale += inputs_3d.shape[0]*inputs_3d.shape[1] * n_mpjpe(predicted_3d_pos, inputs_3d).item()
+            epoch_loss_3d_pos_scale += inputs_3d.shape[0] * inputs_3d.shape[1] * n_mpjpe(predicted_3d_pos, inputs_3d).item()
 
-            epoch_loss_3d_pos += inputs_3d.shape[0]*inputs_3d.shape[1] * error.item()
+            epoch_loss_3d_pos += inputs_3d.shape[0] * inputs_3d.shape[1] * error.item()
             N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
             inputs = inputs_3d.cpu().numpy().reshape(-1, inputs_3d.shape[-2], inputs_3d.shape[-1])
             predicted_3d_pos = predicted_3d_pos.cpu().numpy().reshape(-1, inputs_3d.shape[-2], inputs_3d.shape[-1])
 
-            epoch_loss_3d_pos_procrustes += inputs_3d.shape[0]*inputs_3d.shape[1] * p_mpjpe(predicted_3d_pos, inputs)
+            epoch_loss_3d_pos_procrustes += inputs_3d.shape[0] * inputs_3d.shape[1] * p_mpjpe(predicted_3d_pos, inputs)
 
             # Compute velocity error
-            epoch_loss_3d_vel += inputs_3d.shape[0]*inputs_3d.shape[1] * mean_velocity_error(predicted_3d_pos, inputs)
+            epoch_loss_3d_vel += inputs_3d.shape[0] * inputs_3d.shape[1] * mean_velocity_error(predicted_3d_pos, inputs)
 
     if action is None:
         print('----------')
     else:
-        print('----'+action+'----')
-    e1 = (epoch_loss_3d_pos / N)*1000
-    e2 = (epoch_loss_3d_pos_procrustes / N)*1000
-    e3 = (epoch_loss_3d_pos_scale / N)*1000
-    ev = (epoch_loss_3d_vel / N)*1000
+        print('----' + action + '----')
+    e1 = (epoch_loss_3d_pos / N) * 1000
+    e2 = (epoch_loss_3d_pos_procrustes / N) * 1000
+    e3 = (epoch_loss_3d_pos_scale / N) * 1000
+    ev = (epoch_loss_3d_vel / N) * 1000
     print('Test time augmentation:', test_generator.augment_enabled())
     print('Protocol #1 Error (MPJPE):', e1, 'mm')
     print('Protocol #2 Error (P-MPJPE):', e2, 'mm')
@@ -769,6 +772,7 @@ def evaluate(test_generator, action=None, return_predictions=False, use_trajecto
     print('----------')
 
     return e1, e2, e3, ev
+
 
 if args.render:
     print('Rendering...')
@@ -782,17 +786,18 @@ if args.render:
         print('INFO: this action is unlabeled. Ground truth will not be rendered.')
 
     gen = UnchunkedGenerator_Seq(None, [ground_truth], [input_keypoints],
-                             pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
-                             kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
+                                 pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
+                                 kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
     prediction = evaluate(gen, return_predictions=True)
     if args.compare:
         from common.model_poseformer import PoseTransformer
-        model_pf = PoseTransformer(num_frame=81, num_joints=17, in_chans=2, num_heads=8, mlp_ratio=2., qkv_bias=False, qk_scale=None,drop_path_rate=0.1)
+
+        model_pf = PoseTransformer(num_frame=81, num_joints=17, in_chans=2, num_heads=8, mlp_ratio=2., qkv_bias=False, qk_scale=None, drop_path_rate=0.1)
         if torch.cuda.is_available():
             model_pf = nn.DataParallel(model_pf)
             model_pf = model_pf.cuda()
         prediction_pf = evaluate(gen, newmodel=model_pf, return_predictions=True)
-        
+
         # ### reshape prediction_pf as ground truth
         # if ground_truth.shape[0] / receptive_field > ground_truth.shape[0] // receptive_field: 
         #     batch_num = (ground_truth.shape[0] // receptive_field) +1
@@ -809,13 +814,13 @@ if args.render:
     #     prediction_traj = evaluate(gen, return_predictions=True, use_trajectory_model=True)
     #     prediction += prediction_traj
     ### reshape prediction as ground truth
-    if ground_truth.shape[0] / receptive_field > ground_truth.shape[0] // receptive_field: 
-        batch_num = (ground_truth.shape[0] // receptive_field) +1
+    if ground_truth.shape[0] / receptive_field > ground_truth.shape[0] // receptive_field:
+        batch_num = (ground_truth.shape[0] // receptive_field) + 1
         prediction2 = np.empty_like(ground_truth)
-        for i in range(batch_num-1):
-            prediction2[i*receptive_field:(i+1)*receptive_field,:,:] = prediction[i,:,:,:]
-        left_frames = ground_truth.shape[0] - (batch_num-1)*receptive_field
-        prediction2[-left_frames:,:,:] = prediction[-1,-left_frames:,:,:]
+        for i in range(batch_num - 1):
+            prediction2[i * receptive_field:(i + 1) * receptive_field, :, :] = prediction[i, :, :, :]
+        left_frames = ground_truth.shape[0] - (batch_num - 1) * receptive_field
+        prediction2[-left_frames:, :, :] = prediction[-1, -left_frames:, :, :]
         prediction = prediction2
     elif ground_truth.shape[0] / receptive_field == ground_truth.shape[0] // receptive_field:
         prediction.reshape(ground_truth.shape[0], 17, 3)
@@ -854,7 +859,7 @@ if args.render:
             prediction = camera_to_world(prediction, R=rot, t=0)
             # We don't have the trajectory, but at least we can rebase the height
             prediction[:, :, 2] -= np.min(prediction[:, :, 2])
-        
+
         if args.compare:
             anim_output = {'PoseFormer': prediction_pf}
             anim_output['Ours'] = prediction
@@ -862,18 +867,19 @@ if args.render:
         else:
             anim_output = {'Reconstruction': prediction}
             # anim_output = {'Reconstruction': ground_truth + np.random.normal(loc=0.0, scale=0.1, size=[ground_truth.shape[0], 17, 3])}
-        
+
         if ground_truth is not None and not args.viz_no_ground_truth:
             anim_output['Ground truth'] = ground_truth
 
         input_keypoints = image_coordinates(input_keypoints[..., :2], w=cam['res_w'], h=cam['res_h'])
 
         from common.visualization import render_animation
+
         render_animation(input_keypoints, keypoints_metadata, anim_output,
-                        dataset.skeleton(), dataset.fps(), args.viz_bitrate, cam['azimuth'], args.viz_output,
-                        limit=args.viz_limit, downsample=args.viz_downsample, size=args.viz_size,
-                        input_video_path=args.viz_video, viewport=(cam['res_w'], cam['res_h']),
-                        input_video_skip=args.viz_skip)
+                         dataset.skeleton(), dataset.fps(), args.viz_bitrate, cam['azimuth'], args.viz_output,
+                         limit=args.viz_limit, downsample=args.viz_downsample, size=args.viz_size,
+                         input_video_path=args.viz_video, viewport=(cam['res_w'], cam['res_h']),
+                         input_video_skip=args.viz_skip)
 
 else:
     print('Evaluating...')
@@ -892,18 +898,19 @@ else:
             all_actions[action_name].append((subject, action))
             all_actions_by_subject[subject][action_name].append((subject, action))
 
+
     def fetch_actions(actions):
         out_poses_3d = []
         out_poses_2d = []
 
         for subject, action in actions:
             poses_2d = keypoints[subject][action]
-            for i in range(len(poses_2d)): # Iterate across cameras
+            for i in range(len(poses_2d)):  # Iterate across cameras
                 out_poses_2d.append(poses_2d[i])
 
             poses_3d = dataset[subject][action]['positions_3d']
             assert len(poses_3d) == len(poses_2d), 'Camera count mismatch'
-            for i in range(len(poses_3d)): # Iterate across cameras
+            for i in range(len(poses_3d)):  # Iterate across cameras
                 out_poses_3d.append(poses_3d[i])
 
         stride = args.downsample
@@ -915,6 +922,7 @@ else:
                     out_poses_3d[i] = out_poses_3d[i][::stride]
 
         return out_poses_3d, out_poses_2d
+
 
     def run_evaluation(actions, action_filter=None):
         errors_p1 = []
@@ -935,11 +943,11 @@ else:
 
             poses_act, poses_2d_act = fetch_actions(actions[action_key])
             gen = UnchunkedGenerator_Seq(None, poses_act, poses_2d_act,
-                                     pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
-                                     kps_left=kps_left, kps_right=kps_right, joints_left=joints_left,
-                                     joints_right=joints_right)
+                                         pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
+                                         kps_left=kps_left, kps_right=kps_right, joints_left=joints_left,
+                                         joints_right=joints_right)
             e1, e2, e3, ev = evaluate(gen, action_key)
-            
+
             # joints_errs_list.append(joints_errs)
 
             errors_p1.append(e1)
@@ -957,6 +965,7 @@ else:
         # with open('output/mpjpe_joints.csv', 'a+') as f:
         #     for i in joints_errs_np:
         #         f.write(str(i)+'\n')
+
 
     if not args.by_subject:
         run_evaluation(all_actions, action_filter)

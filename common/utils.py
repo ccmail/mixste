@@ -1,13 +1,17 @@
+import datetime
+import time
+
 import torch
 import numpy as np
 import hashlib
+
 
 def wrap(func, *args, unsqueeze=False):
     """
     Wrap a torch function so it can be called with NumPy arrays.
     Input and return types are seamlessly converted.
     """
-    
+
     # Convert input types where applicable
     args = list(args)
     for i, arg in enumerate(args):
@@ -15,9 +19,9 @@ def wrap(func, *args, unsqueeze=False):
             args[i] = torch.from_numpy(arg)
             if unsqueeze:
                 args[i] = args[i].unsqueeze(0)
-        
+
     result = func(*args)
-    
+
     # Convert output types where applicable
     if isinstance(result, tuple):
         result = list(result)
@@ -33,11 +37,13 @@ def wrap(func, *args, unsqueeze=False):
         return result.numpy()
     else:
         return result
-    
+
+
 def deterministic_random(min_value, max_value, data):
     digest = hashlib.sha256(data.encode()).digest()
     raw_value = int.from_bytes(digest[:4], byteorder='little', signed=False)
-    return int(raw_value / (2**32 - 1) * (max_value - min_value)) + min_value
+    return int(raw_value / (2 ** 32 - 1) * (max_value - min_value)) + min_value
+
 
 def load_pretrained_weights(model, checkpoint):
     """Load pretrianed weights to model
@@ -71,3 +77,25 @@ def load_pretrained_weights(model, checkpoint):
     print('load_weight', len(matched_layers))
     # model.state_dict(model_dict).requires_grad = False
     return model
+
+
+def cost_time(start_time, end_time):
+    time_diff = end_time - start_time
+
+    # 将时间差转换为小时、分钟、秒
+    seconds = time_diff.seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return f"{hours} h {minutes} m {seconds} s"
+
+
+if __name__ == '__main__':
+    st = datetime.datetime.now()
+    time.sleep(2)
+    print(cost_time(st, datetime.datetime.now()))
+    st = time.time()
+    time.sleep(1)
+    el = time.time()
+    print(el / 60)
+    pass
