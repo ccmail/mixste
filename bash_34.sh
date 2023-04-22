@@ -1,0 +1,1 @@
+python run.py -k cpn_ft_h36m_dbb -f 243 -s 243 -l log/run -c checkpoint -gpu 0,1 -b 4500
